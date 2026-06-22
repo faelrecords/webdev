@@ -31,4 +31,9 @@ describe('importFiles', () => {
     const file=new File([JSON.stringify(backup)],'teste.webdev.json',{type:'application/json'});const result=await importFiles([file]);
     expect(result.project.files[0]?.blob?.size).toBe(2);
   });
+
+  it('processa projeto com muitos arquivos em lotes',async()=>{
+    const files:File[]=[new File(['<main>Grande</main>'],'index.html',{type:'text/html'})];for(let index=0;index<1200;index++)files.push(new File([`v${index}`],`asset-${index}.txt`,{type:'text/plain'}));
+    const {project}=await importFiles(files);expect(project.files).toHaveLength(1200);
+  },10000);
 });

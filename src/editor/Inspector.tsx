@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { analyzeResponsiveness, applySafeResponsiveFixes, ensureAnimationRuntime, ensureAnimationStyles, setDeviceVisibility, setResponsiveStyle } from '../utils/responsive';
 import { getActivePage } from '../stores/editorStore';
+import { auditPage } from '../utils/audit';
 
 export function Inspector() {
   const selected = useEditorStore((state)=>state.selected);
@@ -13,12 +14,13 @@ export function Inspector() {
   const updatePage = useEditorStore((state)=>state.updatePage);
   const page=getActivePage(project);
   const issues=analyzeResponsiveness(page.html,page.css);
+  const audit=auditPage(page);
   function send(type:string,payload:Record<string,string>={}) {
     if(type==='style'&&selected&&payload.property){updatePage({css:setResponsiveStyle(page.css,selected.id,payload.property,payload.value??'',device,project.settings.breakpoints)},`Estilo ${device}`);return}
     const frame=document.querySelector<HTMLIFrameElement>('.canvas-frame iframe');frame?.contentWindow?.postMessage({source:'webdev-editor',type,id:selected?.id,...payload},'*')
   }
   return <aside className="inspector"><div className="inspector-tabs"><button className={tab==='content'?'active':''} onClick={()=>setTab('content')}>Conteúdo</button><button className={tab==='style'?'active':''} onClick={()=>setTab('style')}>Estilo</button><button className={tab==='advanced'?'active':''} onClick={()=>setTab('advanced')}>Avançado</button></div>
-    {!selected ? <div className="no-selection"><SlidersHorizontal/><h3>Nenhum elemento selecionado</h3><p>Clique elemento no canvas.</p>{issues.length?<div className="responsive-audit"><strong>{issues.length} ajustes responsivos</strong>{issues.slice(0,3).map(issue=><span key={issue.type+issue.message}>{issue.message}</span>)}<button onClick={()=>updatePage({css:applySafeResponsiveFixes(page.css)},'Corrigir responsividade')}>Aplicar correções seguras</button></div>:null}</div> : <div className="inspector-content"><div className="selected-heading"><span>&lt;{selected.tagName}&gt; · {device==='desktop'?'Desktop':device==='tablet'?'Tablet':'Celular'}</span><strong>{selected.className||selected.tagName}</strong></div>
+    {!selected ? <div className="no-selection"><SlidersHorizontal/><h3>Nenhum elemento selecionado</h3><p>Clique elemento no canvas.</p>{issues.length?<div className="responsive-audit"><strong>{issues.length} ajustes responsivos</strong>{issues.slice(0,3).map(issue=><span key={issue.type+issue.message}>{issue.message}</span>)}<button onClick={()=>updatePage({css:applySafeResponsiveFixes(page.css)},'Corrigir responsividade')}>Aplicar correções seguras</button></div>:null}{audit.length?<div className="responsive-audit quality-audit"><strong>{audit.length} alertas de qualidade</strong>{audit.slice(0,5).map((issue,index)=><span key={`${issue.type}-${index}`}>{issue.message}</span>)}</div>:<div className="responsive-audit quality-audit"><strong>Auditoria aprovada</strong><span>SEO e acessibilidade básicos válidos.</span></div>}</div> : <div className="inspector-content"><div className="selected-heading"><span>&lt;{selected.tagName}&gt; · {device==='desktop'?'Desktop':device==='tablet'?'Tablet':'Celular'}</span><strong>{selected.className||selected.tagName}</strong></div>
     {tab==='content'?<ContentControls selected={selected} send={send} assets={project.files.filter(file=>file.type.startsWith('image')||/\.(png|jpe?g|gif|webp|svg)$/i.test(file.path))}/>:null}{tab==='style'?<StyleControls selected={selected} send={send}/>:null}{tab==='advanced'?<AdvancedControls selected={selected} send={send} pageHtml={page.html} pageCss={page.css} pageJavascript={page.javascript} updateCss={css=>updatePage({css},'Configurar movimento')} updateMotion={(html,css,javascript)=>updatePage({html,css,javascript},'Configurar movimento')} breakpoints={project.settings.breakpoints}/>:null}</div>}
   </aside>;
 }

@@ -54,7 +54,7 @@ export async function importFiles(files: FileList | File[], onProgress?: (progre
     return { project: parsed, report: { pages: parsed.pages.length, assets: parsed.files.length, warnings: [], mode: 'visual' } };
   }
   const expanded: ProjectFile[] = [];
-  for (const file of input) {
+  for (const file of input.filter(file=>/\.zip$/i.test(file.name))) {
     if (/\.zip$/i.test(file.name)) {
       const content = await unzipArchive(file, onProgress);
       for (const entry of content) {
@@ -62,10 +62,10 @@ export async function importFiles(files: FileList | File[], onProgress?: (progre
         const size = entry.text === undefined ? entry.blob!.size : new Blob([entry.text]).size;
         expanded.push({ path: entry.path, name: entry.path.split('/').pop() ?? entry.path, type: '', size, ...(textTypes.test(extension) ? { text: entry.text ?? '' } : { blob: entry.blob! }), modified: false });
       }
-    } else {
-      expanded.push(toProjectFile(file, textTypes.test(file.name) ? await readText(file) : undefined));
     }
   }
+  const plain=input.filter(file=>!/\.zip$/i.test(file.name));
+  for(let offset=0;offset<plain.length;offset+=100){const batch=plain.slice(offset,offset+100);expanded.push(...await Promise.all(batch.map(async file=>toProjectFile(file,textTypes.test(file.name)?await readText(file):undefined))));onProgress?.({progress:Math.round(((offset+batch.length)/plain.length)*90),message:`Lendo ${Math.min(offset+batch.length,plain.length)} de ${plain.length}`})}
   const htmlFiles = expanded.filter((file) => /\.html?$/i.test(file.path));
   const filesByPath = new Map(expanded.map((file) => [file.path, file]));
   const pages: PageDocument[] = htmlFiles.map((file) => {

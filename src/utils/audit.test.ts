@@ -1,0 +1,2 @@
+import {describe,expect,it}from'vitest';import{createProject}from'../domain/defaults';import{auditPage}from'./audit';
+describe('auditoria',()=>{it('detecta acessibilidade e SEO',()=>{const page=createProject().pages[0]!;page.html='<img src="a.png"><input><h1>A</h1><h1>B</h1>';const issues=auditPage(page);expect(issues.some(issue=>issue.type==='accessibility')).toBe(true);expect(issues.filter(issue=>issue.type==='seo').length).toBeGreaterThan(1)})});

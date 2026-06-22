@@ -100,3 +100,9 @@ test('edita dados SEO da página', async ({ page }) => {
   await page.locator('.page-settings').getByRole('button', { name: 'Salvar', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Página e SEO' })).toHaveCount(0);
 });
+
+test('não gera rolagem horizontal no celular',async({page})=>{
+  const errors:string[]=[];page.on('console',message=>{if(message.type()==='error')errors.push(message.text())});
+  await page.getByRole('button',{name:'Novo projeto'}).click();await page.getByRole('button',{name:'mobile'}).click();const canvas=page.frameLocator('.canvas-frame iframe');
+  const overflow=await canvas.locator('body').evaluate(body=>body.scrollWidth-body.clientWidth);expect(overflow).toBeLessThanOrEqual(1);expect(errors).toEqual([]);
+});
