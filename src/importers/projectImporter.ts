@@ -1,12 +1,12 @@
 import { nanoid } from 'nanoid';
-import { unzipSync, strFromU8 } from 'fflate';
 import type { ImportReport, PageDocument, Project, ProjectFile } from '../domain/types';
 import { createProject } from '../domain/defaults';
 import { applySafeResponsiveFixes } from '../utils/responsive';
+import { unzipArchive, type ArchiveProgress } from '../workers/archiveClient';
 
 const textTypes = /(?:html?|css|js|mjs|json|txt|md|svg|xml)$/i;
 
-function splitHtml(source: string, files: ProjectFile[] = [], htmlPath = '') {
+function splitHtml(source: string, files = new Map<string, ProjectFile>(), htmlPath = '') {
   const doc = new DOMParser().parseFromString(source, 'text/html');
   const base = htmlPath.includes('/') ? htmlPath.slice(0, htmlPath.lastIndexOf('/') + 1) : '';
   const resolve = (path: string) => {
@@ -17,8 +17,8 @@ function splitHtml(source: string, files: ProjectFile[] = [], htmlPath = '') {
     }
     return stack.join('/');
   };
-  const externalStyles = [...doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][href]')].map((node) => files.find((file) => file.path === resolve(node.getAttribute('href') ?? ''))?.text ?? '').join('\n');
-  const externalScripts = [...doc.querySelectorAll<HTMLScriptElement>('script[src]')].map((node) => files.find((file) => file.path === resolve(node.getAttribute('src') ?? ''))?.text ?? '').join('\n');
+  const externalStyles = [...doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][href]')].map((node) => files.get(resolve(node.getAttribute('href') ?? ''))?.text ?? '').join('\n');
+  const externalScripts = [...doc.querySelectorAll<HTMLScriptElement>('script[src]')].map((node) => files.get(resolve(node.getAttribute('src') ?? ''))?.text ?? '').join('\n');
   const styles = [[...doc.querySelectorAll('style')].map((node) => node.textContent ?? '').join('\n'), externalStyles].filter(Boolean).join('\n');
   const scripts = [[...doc.querySelectorAll('script:not([src])')].map((node) => node.textContent ?? '').join('\n'), externalScripts].filter(Boolean).join('\n');
   doc.querySelectorAll('style, script').forEach((node) => node.remove());
@@ -40,7 +40,7 @@ function readText(file: File) {
   });
 }
 
-export async function importFiles(files: FileList | File[]): Promise<{ project: Project; report: ImportReport }> {
+export async function importFiles(files: FileList | File[], onProgress?: (progress: ArchiveProgress) => void): Promise<{ project: Project; report: ImportReport }> {
   const input = Array.from(files);
   const backup = input.find((file) => /\.webdev\.json$/i.test(file.name));
   if (backup) {
@@ -53,19 +53,20 @@ export async function importFiles(files: FileList | File[]): Promise<{ project: 
   const expanded: ProjectFile[] = [];
   for (const file of input) {
     if (/\.zip$/i.test(file.name)) {
-      const content = unzipSync(new Uint8Array(await file.arrayBuffer()));
-      for (const [path, bytes] of Object.entries(content)) {
-        if (path.endsWith('/') || path.includes('../')) continue;
-        const extension = path.split('.').pop() ?? '';
-        expanded.push({ path, name: path.split('/').pop() ?? path, type: '', size: bytes.length, ...(textTypes.test(extension) ? { text: strFromU8(bytes) } : { blob: new Blob([bytes]) }), modified: false });
+      const content = await unzipArchive(file, onProgress);
+      for (const entry of content) {
+        const extension = entry.path.split('.').pop() ?? '';
+        const size = entry.text === undefined ? entry.blob!.size : new Blob([entry.text]).size;
+        expanded.push({ path: entry.path, name: entry.path.split('/').pop() ?? entry.path, type: '', size, ...(textTypes.test(extension) ? { text: entry.text ?? '' } : { blob: entry.blob! }), modified: false });
       }
     } else {
       expanded.push(toProjectFile(file, textTypes.test(file.name) ? await readText(file) : undefined));
     }
   }
   const htmlFiles = expanded.filter((file) => /\.html?$/i.test(file.path));
+  const filesByPath = new Map(expanded.map((file) => [file.path, file]));
   const pages: PageDocument[] = htmlFiles.map((file) => {
-    const parsed = splitHtml(file.text ?? '', expanded, file.path);
+    const parsed = splitHtml(file.text ?? '', filesByPath, file.path);
     return { id: nanoid(), name: file.name.replace(/\.html?$/i, ''), path: file.path, ...parsed, css: applySafeResponsiveFixes(parsed.css) };
   });
   const project = createProject(input[0]?.name.replace(/\.(html?|zip)$/i, '') || 'Projeto importado');

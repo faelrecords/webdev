@@ -9,6 +9,7 @@ export interface ProjectFile {
   size: number;
   text?: string;
   blob?: Blob;
+  storageKey?: string;
   modified: boolean;
 }
 

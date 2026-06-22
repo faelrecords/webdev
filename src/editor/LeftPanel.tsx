@@ -12,6 +12,7 @@ export function LeftPanel() {
   const tab = useEditorStore((state) => state.leftTab);
   const setTab = useEditorStore((state) => state.setLeftTab);
   const [query, setQuery] = useState('');
+  const [visibleFileCount,setVisibleFileCount]=useState(300);
   const project = useEditorStore((state) => state.project);
   const addAssets = useEditorStore((state) => state.addAssets);
   const assetInput = useRef<HTMLInputElement>(null);
@@ -22,7 +23,7 @@ export function LeftPanel() {
   return <aside className="left-panel"><div className="panel-tabs">{tabs.map(({ id,label,icon:Icon }) => <button key={id} className={tab===id?'active':''} onClick={()=>setTab(id)}><Icon size={18}/><span>{label}</span></button>)}</div>
     <div className="panel-content">{tab === 'elements' ? <><label className="search-field"><Search size={15}/><input placeholder="Buscar elementos" value={query} onChange={e=>setQuery(e.target.value)}/></label><WidgetLibrary query={query}/></> : null}
     {tab === 'layers' ? <div className="layers-panel"><h3>Estrutura da página</h3>{layers.map((node)=><Layer key={node.id} node={node} depth={0}/>)}</div> : null}
-    {tab === 'files' ? <div className="files-panel"><h3>Arquivos <button className="tiny-action" onClick={()=>assetInput.current?.click()}><Upload size={12}/>Adicionar</button></h3><div className="file-row active"><File size={15}/><span>{page.path}</span></div>{project.files.map(file=><div className="file-row" key={file.path}>{file.type.startsWith('image')?<ImageIcon size={15}/>:<File size={15}/>}<span title={file.path}>{file.path}</span></div>)}<input ref={assetInput} type="file" hidden multiple accept="image/*,video/*,.svg,.woff,.woff2,.ttf,.css,.js" onChange={event=>event.target.files&&void addAssets(Array.from(event.target.files))}/></div> : null}
+    {tab === 'files' ? <div className="files-panel"><h3>Arquivos <button className="tiny-action" onClick={()=>assetInput.current?.click()}><Upload size={12}/>Adicionar</button></h3><div className="file-row active"><File size={15}/><span>{page.path}</span></div>{project.files.slice(0,visibleFileCount).map(file=><div className="file-row" key={file.path}>{file.type.startsWith('image')?<ImageIcon size={15}/>:<File size={15}/>}<span title={file.path}>{file.path}</span></div>)}{visibleFileCount<project.files.length?<button className="load-more" onClick={()=>setVisibleFileCount((count)=>count+300)}>Carregar mais {Math.min(300,project.files.length-visibleFileCount)}</button>:null}<input ref={assetInput} type="file" hidden multiple accept="image/*,video/*,.svg,.woff,.woff2,.ttf,.css,.js" onChange={event=>event.target.files&&void addAssets(Array.from(event.target.files))}/></div> : null}
     {tab === 'templates' ? <Templates/> : null}
     {tab === 'history' ? <div className="history-panel"><h3>Histórico desta página</h3>{past.length?<>{past.map((entry,index)=><button key={`${entry.timestamp}-${index}`} onClick={()=>restoreHistory(index)}><Clock3/><span><strong>{entry.label}</strong><small>{new Date(entry.timestamp).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></span></button>)}</>:<p>Nenhuma alteração registrada.</p>}</div> : null}</div>
   </aside>;

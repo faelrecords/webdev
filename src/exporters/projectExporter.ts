@@ -1,5 +1,5 @@
-import { strToU8, zipSync } from 'fflate';
 import type { PageDocument, Project } from '../domain/types';
+import { zipArchive, type ArchiveEntry, type ArchiveProgress } from '../workers/archiveClient';
 
 function fullHtml(page: PageDocument, executeScripts = true) {
   return `<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${page.name}</title>\n<style>\n${page.css}\n</style>\n</head>\n<body>\n${page.html}\n${executeScripts && page.javascript ? `<script>\n${page.javascript}\n</script>` : ''}\n</body>\n</html>`;
@@ -9,15 +9,14 @@ export function exportHtml(project: Project, page: PageDocument) {
   download(new Blob([fullHtml(page)], { type: 'text/html;charset=utf-8' }), page.path.split('/').pop() ?? 'index.html');
 }
 
-export async function exportProjectZip(project: Project) {
-  const entries: Record<string, Uint8Array> = {};
-  for (const page of project.pages) entries[page.path] = strToU8(fullHtml(page));
+export async function exportProjectZip(project: Project, onProgress?: (progress: ArchiveProgress) => void) {
+  const entries: ArchiveEntry[] = [];
+  for (const page of project.pages) entries.push({ path: page.path, text: fullHtml(page) });
   for (const file of project.files) {
-    if (file.text !== undefined) entries[file.path] = strToU8(file.text);
-    else if (file.blob) entries[file.path] = new Uint8Array(await file.blob.arrayBuffer());
+    if (file.text !== undefined) entries.push({ path: file.path, text: file.text });
+    else if (file.blob) entries.push({ path: file.path, blob: file.blob });
   }
-  const bytes = zipSync(entries, { level: 6 });
-  download(new Blob([bytes], { type: 'application/zip' }), `${slug(project.name)}.zip`);
+  download(await zipArchive(entries, onProgress), `${slug(project.name)}.zip`);
 }
 
 type WritableFileHandle = FileSystemFileHandle & { createWritable(): Promise<{ write(data: Blob|string): Promise<void>; close(): Promise<void> }> };

@@ -24,6 +24,12 @@ const bridge = String.raw`<script>
 })();
 </script>`;
 
+function resolveRelativePath(base: string, value: string) {
+  const stack:string[]=[];
+  for(const part of `${base}${value}`.split('/')) { if(part==='..') stack.pop(); else if(part!=='.') stack.push(part); }
+  return stack.join('/');
+}
+
 export function Canvas() {
   const iframe = useRef<HTMLIFrameElement>(null);
   const area = useRef<HTMLElement>(null);
@@ -59,11 +65,19 @@ export function Canvas() {
     window.addEventListener('webdev-insert-widget',insert);
     return()=>window.removeEventListener('webdev-insert-widget',insert);
   },[page.html,updatePage]);
-  const assetUrls = useMemo(() => project.files.map((file) => ({ path: file.path, url: file.blob ? URL.createObjectURL(file.blob) : file.text !== undefined && !/\.(css|js|html?|json|txt|md)$/i.test(file.path) ? URL.createObjectURL(new Blob([file.text], { type: file.type })) : '' })).filter((item) => item.url), [project.files]);
+  const activeAssetPaths = useMemo(() => {
+    const base=page.path.includes('/')?page.path.slice(0,page.path.lastIndexOf('/')+1):'';
+    const paths=new Set<string>();
+    const doc=new DOMParser().parseFromString(page.html,'text/html');
+    doc.querySelectorAll<HTMLElement>('[src],[poster]').forEach((node)=>{for(const attribute of ['src','poster']){const value=node.getAttribute(attribute);if(value&&!/^(?:https?:|data:|blob:|#)/.test(value))paths.add(resolveRelativePath(base,value))}});
+    for(const match of page.css.matchAll(/url\((['"]?)(?!data:|https?:|blob:)([^)'"\s]+)\1\)/g)) paths.add(resolveRelativePath(base,match[2]!));
+    return paths;
+  },[page.css,page.html,page.path]);
+  const assetUrls = useMemo(() => project.files.filter((file)=>activeAssetPaths.has(file.path)).map((file) => ({ path: file.path, url: file.blob ? URL.createObjectURL(file.blob) : file.text !== undefined && !/\.(css|js|html?|json|txt|md)$/i.test(file.path) ? URL.createObjectURL(new Blob([file.text], { type: file.type })) : '' })).filter((item) => item.url), [activeAssetPaths,project.files]);
   useEffect(() => () => assetUrls.forEach((item) => URL.revokeObjectURL(item.url)), [assetUrls]);
   const resolved = useMemo(() => {
     const pageBase=page.path.includes('/')?page.path.slice(0,page.path.lastIndexOf('/')+1):'';
-    const normalize=(value:string)=>{const stack:string[]=[];for(const part of `${pageBase}${value}`.split('/')){if(part==='..')stack.pop();else if(part!=='.')stack.push(part)}return stack.join('/')};
+    const normalize=(value:string)=>resolveRelativePath(pageBase,value);
     const find=(value:string)=>assetUrls.find(item=>item.path===normalize(value))?.url;
     const doc=new DOMParser().parseFromString(page.html,'text/html');
     doc.querySelectorAll<HTMLElement>('[src],[poster]').forEach(node=>{for(const attr of ['src','poster']){const value=node.getAttribute(attr);if(value&&!/^(?:https?:|data:|blob:|#)/.test(value)){const url=find(value);if(url)node.setAttribute(attr,url)}}});

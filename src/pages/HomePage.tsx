@@ -3,13 +3,16 @@ import { FileArchive, FileCode2, FolderOpen, LayoutTemplate, MoreHorizontal, Plu
 import { useNavigate } from 'react-router-dom';
 import type { Project } from '../domain/types';
 import { createProject } from '../domain/defaults';
-import { deleteProject, duplicateProject, listProjects, saveProject } from '../storage/database';
+import { deleteProject, duplicateProject, listProjects, loadProject, saveProject } from '../storage/database';
 import { importFiles, pickDirectory } from '../importers/projectImporter';
 import { useEditorStore } from '../stores/editorStore';
+import { ProgressOverlay } from '../components/ProgressOverlay';
+import type { ArchiveProgress } from '../workers/archiveClient';
 
 export function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [menu, setMenu] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ArchiveProgress | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -17,9 +20,9 @@ export function HomePage() {
   const refresh = () => void listProjects().then(setProjects);
   useEffect(refresh, []);
 
-  async function open(project: Project) { setProject(project); navigate('/editor'); }
+  async function open(project: Project) { setProject(await loadProject(project.id) ?? project); navigate('/editor'); }
   async function create() { const project = createProject(); await saveProject(project); await open(project); }
-  async function ingest(files: FileList | File[]) { if (!files.length) return; const result = await importFiles(files); await saveProject(result.project); if (result.report.warnings.length) window.alert(`Importação concluída.\n\n${result.report.warnings.join('\n')}`); await open(result.project); }
+  async function ingest(files: FileList | File[]) { if (!files.length) return; setProgress({progress:1,message:'Preparando importação'}); try { const result = await importFiles(files,setProgress); await saveProject(result.project); if (result.report.warnings.length) window.alert(`Importação concluída.\n\n${result.report.warnings.join('\n')}`); await open(result.project); } finally { setProgress(null); } }
   async function chooseFolder() {
     const files = await pickDirectory();
     if (files.length) await ingest(files); else folderInput.current?.click();
@@ -45,6 +48,7 @@ export function HomePage() {
     </main>
     <input ref={fileInput} hidden type="file" accept=".html,.htm,.zip,.json" multiple onChange={(event) => event.target.files && void ingest(event.target.files)}/>
     <input ref={folderInput} hidden type="file" multiple {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={(event) => event.target.files && void ingest(event.target.files)}/>
+    {progress ? <ProgressOverlay value={progress} title="Importando projeto"/> : null}
   </div>;
 }
 
