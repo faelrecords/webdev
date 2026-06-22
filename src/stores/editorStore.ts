@@ -30,7 +30,7 @@ interface EditorState {
   renameAsset(path:string,nextPath:string): void;
   deleteAsset(path:string): void;
   updateSettings(change: Partial<Project['settings']>): void;
-  addTemplate(name: string, html: string): void;
+  addTemplate(name: string, html: string, css?:string): void;
   selectPage(id: string): void;
   undo(): void;
   redo(): void;
@@ -81,7 +81,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   renameAsset:(path,nextPath)=>set(state=>{const normalized=nextPath.replace(/\\/g,'/').replace(/^\/+/, '');if(!normalized||state.project.files.some(file=>file.path===normalized))return state;const files=state.project.files.map(file=>file.path===path?{...file,path:normalized,name:normalized.split('/').pop()??normalized,modified:true}:file);const pages=state.project.pages.map(page=>({...page,html:page.html.split(path).join(normalized),css:page.css.split(path).join(normalized),javascript:page.javascript.split(path).join(normalized)}));return{project:{...state.project,files,pages,updatedAt:Date.now()},saved:false}}),
   deleteAsset:(path)=>set(state=>({project:{...state.project,files:state.project.files.filter(file=>file.path!==path),updatedAt:Date.now()},saved:false})),
   updateSettings: (change) => set((state) => ({ project: { ...state.project, settings: { ...state.project.settings, ...change }, updatedAt: Date.now() }, saved: false })),
-  addTemplate: (name, html) => set((state) => {const doc=new DOMParser().parseFromString(html,'text/html');const root=doc.body.firstElementChild;root?.classList.remove('wd-selected');root?.removeAttribute('draggable');const componentId=root?.getAttribute('data-wd-component');return { project: { ...state.project, templates: [...(state.project.templates ?? []), { id: componentId??crypto.randomUUID(), name, html:root?.outerHTML??html, global:Boolean(componentId), createdAt: Date.now() }], updatedAt: Date.now() }, saved: false }}),
+  addTemplate: (name, html,css) => set((state) => {const doc=new DOMParser().parseFromString(html,'text/html');const root=doc.body.firstElementChild;root?.classList.remove('wd-selected');root?.removeAttribute('draggable');const componentId=root?.getAttribute('data-wd-component');return { project: { ...state.project, templates: [...(state.project.templates ?? []), { id: componentId??crypto.randomUUID(), name, html:root?.outerHTML??html,...(css?{css}:{}), global:Boolean(componentId), createdAt: Date.now() }], updatedAt: Date.now() }, saved: false }}),
   selectPage: (id) => set((state) => ({ project: { ...state.project, activePageId: id }, selected: null, past: [], future: [] })),
   undo: () => set((state) => {
     const entry = state.past.at(-1);

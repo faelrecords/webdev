@@ -62,13 +62,13 @@ export function Canvas() {
       if (event.data?.source !== 'webdev-canvas') return;
       if (event.data.type === 'select') setSelected(event.data.element);
       if (event.data.type === 'change') {const javascript=ensureWidgetRuntime(page.javascript,event.data.html);updatePage({ html: event.data.html, ...(javascript===page.javascript?{}:{javascript}) }, event.data.label ?? 'Editar conteúdo')}
-      if (event.data.type === 'template') addTemplate(event.data.name,event.data.html);
+      if (event.data.type === 'template') addTemplate(event.data.name,event.data.html,page.css);
       if (event.data.type === 'clipboard') clipboard.current=event.data.html;
       if (event.data.type === 'paste-request'&&clipboard.current) iframe.current?.contentWindow?.postMessage({source:'webdev-editor',type:'paste',html:clipboard.current},'*');
     }
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [addTemplate, page.javascript, setSelected, updatePage]);
+  }, [addTemplate, page.css, page.javascript, setSelected, updatePage]);
   useEffect(()=>{const command=(event:Event)=>{const detail=(event as CustomEvent<{type:string}>).detail;iframe.current?.contentWindow?.postMessage({source:'webdev-editor',...detail,...(detail.type==='paste'?{html:clipboard.current}:{})},'*')};window.addEventListener('webdev-canvas-command',command);return()=>window.removeEventListener('webdev-canvas-command',command)},[]);
   useEffect(() => {
     function insert(event: Event) {

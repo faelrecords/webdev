@@ -17,12 +17,14 @@ function splitHtml(source: string, files = new Map<string, ProjectFile>(), htmlP
     }
     return stack.join('/');
   };
-  const externalStyles = [...doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][href]')].map((node) => files.get(resolve(node.getAttribute('href') ?? ''))?.text ?? '').join('\n');
-  const externalScripts = [...doc.querySelectorAll<HTMLScriptElement>('script[src]')].map((node) => files.get(resolve(node.getAttribute('src') ?? ''))?.text ?? '').join('\n');
-  const styles = [[...doc.querySelectorAll('style')].map((node) => node.textContent ?? '').join('\n'), externalStyles].filter(Boolean).join('\n');
-  const scripts = [[...doc.querySelectorAll('script:not([src])')].map((node) => node.textContent ?? '').join('\n'), externalScripts].filter(Boolean).join('\n');
-  doc.querySelectorAll('style, script').forEach((node) => node.remove());
-  return { html: doc.body.innerHTML, css: styles, javascript: scripts };
+  const styleLinks=[...doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][href]')];
+  const externalStyles=styleLinks.map(node=>{const content=files.get(resolve(node.getAttribute('href')??''))?.text;if(content!==undefined)node.remove();return content??''}).join('\n');
+  const inlineStyles=[...doc.querySelectorAll('style')];const styles=[inlineStyles.map(node=>node.textContent??'').join('\n'),externalStyles].filter(Boolean).join('\n');inlineStyles.forEach(node=>node.remove());
+  const scripts:string[]=[];doc.querySelectorAll<HTMLScriptElement>('script').forEach(node=>{if(node.type==='module')return;const sourcePath=node.getAttribute('src');if(sourcePath){const content=files.get(resolve(sourcePath))?.text;if(content===undefined)return;scripts.push(content)}else scripts.push(node.textContent??'');node.remove()});
+  const title=doc.title;const description=doc.querySelector<HTMLMetaElement>('meta[name="description"]')?.content;const keywords=doc.querySelector<HTMLMetaElement>('meta[name="keywords"]')?.content;const canonical=doc.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.getAttribute('href')??undefined;const ogImage=doc.querySelector<HTMLMetaElement>('meta[property="og:image"]')?.content;const noindex=/noindex/i.test(doc.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content??'');
+  const seo={...(title?{title}:{}),...(description?{description}:{}),...(keywords?{keywords}:{}),...(canonical?{canonical}:{}),...(ogImage?{ogImage}:{}),...(noindex?{noindex:true}: {})};
+  doc.head.querySelectorAll('title,meta[name="description"],meta[name="keywords"],meta[name="robots"],meta[property="og:image"],link[rel="canonical"],meta[charset],meta[name="viewport"]').forEach(node=>node.remove());
+  return { html: doc.body.innerHTML, css: styles, javascript: scripts.join('\n'), headCode:doc.head.innerHTML, seo };
 }
 
 function toProjectFile(file: File, text?: string): ProjectFile {
@@ -44,9 +46,10 @@ export async function importFiles(files: FileList | File[], onProgress?: (progre
   const input = Array.from(files);
   const backup = input.find((file) => /\.webdev\.json$/i.test(file.name));
   if (backup) {
-    const parsed = JSON.parse(await readText(backup)) as Project;
+    const parsed = JSON.parse(await readText(backup)) as Omit<Project,'files'>&{files:(ProjectFile&{dataUrl?:string})[]};
     if (!parsed.id || !Array.isArray(parsed.pages) || parsed.version !== 1) throw new Error('Backup WebDev inválido.');
     parsed.templates ??= [];
+    await Promise.all(parsed.files.map(async file=>{if(file.dataUrl){file.blob=await(await fetch(file.dataUrl)).blob();delete file.dataUrl}}));
     parsed.updatedAt = Date.now();
     return { project: parsed, report: { pages: parsed.pages.length, assets: parsed.files.length, warnings: [], mode: 'visual' } };
   }
