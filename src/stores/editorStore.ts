@@ -51,7 +51,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const original = currentPage(state.project);
     const before = Object.fromEntries(Object.keys(change).map((key) => [key, original[key as keyof typeof change]]));
     const page = { ...original, ...change };
-    const project = { ...state.project, pages: state.project.pages.map((item) => item.id === page.id ? page : item), updatedAt: Date.now() };
+    let project = { ...state.project, pages: state.project.pages.map((item) => item.id === page.id ? page : item), updatedAt: Date.now() };
+    if (change.html?.includes('data-wd-component')) project = synchronizeComponents(project, page.id);
     const previous = state.past.at(-1);
     const coalesce = record && previous?.label === label && previous.pageId === page.id && Date.now() - previous.timestamp < 500;
     const past = !record ? state.past : coalesce
@@ -70,7 +71,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => ({ project: { ...state.project, files: [...state.project.files.filter((current) => !assets.some((asset) => asset.path === current.path)), ...assets], updatedAt: Date.now() }, saved: false }));
   },
   updateSettings: (change) => set((state) => ({ project: { ...state.project, settings: { ...state.project.settings, ...change }, updatedAt: Date.now() }, saved: false })),
-  addTemplate: (name, html) => set((state) => ({ project: { ...state.project, templates: [...(state.project.templates ?? []), { id: crypto.randomUUID(), name, html, createdAt: Date.now() }], updatedAt: Date.now() }, saved: false })),
+  addTemplate: (name, html) => set((state) => {const doc=new DOMParser().parseFromString(html,'text/html');const root=doc.body.firstElementChild;root?.classList.remove('wd-selected');root?.removeAttribute('draggable');const componentId=root?.getAttribute('data-wd-component');return { project: { ...state.project, templates: [...(state.project.templates ?? []), { id: componentId??crypto.randomUUID(), name, html:root?.outerHTML??html, global:Boolean(componentId), createdAt: Date.now() }], updatedAt: Date.now() }, saved: false }}),
   selectPage: (id) => set((state) => ({ project: { ...state.project, activePageId: id }, selected: null, past: [], future: [] })),
   undo: () => set((state) => {
     const entry = state.past.at(-1);
@@ -107,4 +108,20 @@ export function getActivePage(project: Project) {
 
 function applyHistory(project: Project, pageId: string, change: HistoryEntry['before']) {
   return { ...project, pages: project.pages.map((page) => page.id === pageId ? { ...page, ...change } : page), activePageId: pageId, updatedAt: Date.now() };
+}
+
+function synchronizeComponents(project: Project, sourcePageId: string): Project {
+  const sourcePage=project.pages.find(page=>page.id===sourcePageId);
+  if(!sourcePage)return project;
+  const sourceDoc=new DOMParser().parseFromString(sourcePage.html,'text/html');
+  const components=[...sourceDoc.querySelectorAll<HTMLElement>('[data-wd-component]')];
+  if(!components.length)return project;
+  const pages=project.pages.map(page=>{
+    if(page.id===sourcePageId)return page;
+    const doc=new DOMParser().parseFromString(page.html,'text/html');let changed=false;
+    for(const source of components){const id=source.dataset.wdComponent;const target=id?doc.querySelector<HTMLElement>(`[data-wd-component="${CSS.escape(id)}"]`):null;if(!target)continue;const clone=source.cloneNode(true) as HTMLElement;clone.dataset.wdId=target.dataset.wdId??crypto.randomUUID();clone.querySelectorAll<HTMLElement>('[data-wd-id]').forEach(node=>node.dataset.wdId=crypto.randomUUID());target.replaceWith(clone);changed=true}
+    return changed?{...page,html:doc.body.innerHTML}:page;
+  });
+  const templates=project.templates.map(template=>{const source=components.find(component=>component.dataset.wdComponent===template.id);return source?{...template,html:source.outerHTML}:template});
+  return {...project,pages,templates};
 }

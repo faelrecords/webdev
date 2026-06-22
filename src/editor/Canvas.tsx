@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { getActivePage, useEditorStore } from '../stores/editorStore';
 import { ensureElementIds } from '../utils/html';
+import { ensureWidgetRuntime } from '../utils/widgetRuntime';
 
 const bridge = String.raw`<script id="wd-editor-bridge">
 (() => {
@@ -32,7 +33,7 @@ const bridge = String.raw`<script id="wd-editor-bridge">
   function align(type){if(!selected.length)return;const parent=selected[0].parentElement;if(!parent||selected.some(item=>item.parentElement!==parent))return;parent.style.position=parent.style.position==='static'?'relative':parent.style.position;const width=parent.clientWidth;if(type==='distribute'&&selected.length>1){const ordered=[...selected].sort((a,b)=>a.offsetLeft-b.offsetLeft);const used=ordered.reduce((sum,item)=>sum+item.offsetWidth,0);let left=0;const gap=(width-used)/(ordered.length-1);ordered.forEach(item=>{item.style.position='absolute';item.style.left=Math.round(left)+'px';left+=item.offsetWidth+gap})}else selected.forEach(item=>{item.style.position='absolute';item.style.left=type==='align-left'?'0px':type==='align-center'?Math.round((width-item.offsetWidth)/2)+'px':Math.max(0,width-item.offsetWidth)+'px'});change('Alinhar elementos')}
   function paste(html){const holder=document.createElement('div');holder.innerHTML=html;const nodes=[...holder.children];nodes.forEach(node=>{node.querySelectorAll('[data-wd-id]').forEach(x=>x.dataset.wdId=crypto.randomUUID());node.dataset.wdId=crypto.randomUUID();(selected.at(-1)?.parentElement||document.body).appendChild(node)});clear();nodes.forEach(node=>choose(node,true));change('Colar elemento')}
   function run(type,m={}){const el=document.querySelector('[data-wd-id="'+CSS.escape(m.id||selected.at(-1)?.dataset.wdId||'')+'"]');if(type==='style'&&el){el.style[m.property]=m.value;change('Alterar estilo');choose(el,false)}if(type==='content'&&el){if(m.property==='text')el.textContent=m.value;else if(m.property==='className')el.className=m.value;else if(m.value==='')el.removeAttribute(m.property);else el.setAttribute(m.property,m.value);change('Alterar conteúdo');choose(el,false)}if(type==='delete'){selected.forEach(item=>item.remove());clear();change('Excluir elemento')}if(type==='duplicate'){const clones=cloneElements();clear();clones.forEach(item=>choose(item,true));change('Duplicar elemento')}if(type==='copy'||type==='cut'){send('clipboard',{html:selected.map(item=>item.outerHTML).join(''),cut:type==='cut'});if(type==='cut'){selected.forEach(item=>item.remove());clear();change('Recortar elemento')}}if(type==='paste')paste(m.html||'');if(type==='up'){selected.forEach(item=>item.previousElementSibling?.before(item));change('Mover elemento')}if(type==='down'){[...selected].reverse().forEach(item=>item.nextElementSibling?.after(item));change('Mover elemento')}if(type==='lock'){selected.forEach(item=>item.toggleAttribute('data-wd-locked'));change('Bloquear elemento')}if(type==='hide'){selected.forEach(item=>item.toggleAttribute('hidden'));change('Ocultar elemento')}if(type.startsWith('align-')||type==='distribute')align(type);if(type==='request-template'&&el)send('template',{html:el.outerHTML,name:m.name||'Modelo'})}
-  window.addEventListener('message', e => { const m=e.data;if(m?.source==='webdev-editor')run(m.type,m) });
+  window.addEventListener('message', e => { const m=e.data;if(m?.source!=='webdev-editor')return;if(m.type==='request-template'){const el=document.querySelector('[data-wd-id="'+CSS.escape(m.id||'')+'"]');if(el){el.dataset.wdComponent||=crypto.randomUUID();send('template',{html:el.outerHTML,name:m.name||'Componente'});change('Criar componente global')}return}run(m.type,m) });
   const motionItems=[...document.querySelectorAll('[data-wd-animation]')];if('IntersectionObserver'in window){const observer=new IntersectionObserver(entries=>entries.forEach(entry=>entry.isIntersecting&&entry.target.classList.add('wd-animate')),{threshold:.1});motionItems.forEach(item=>observer.observe(item))}else motionItems.forEach(item=>item.classList.add('wd-animate'));
   send('ready');
 })();
@@ -60,14 +61,14 @@ export function Canvas() {
     function receive(event: MessageEvent) {
       if (event.data?.source !== 'webdev-canvas') return;
       if (event.data.type === 'select') setSelected(event.data.element);
-      if (event.data.type === 'change') updatePage({ html: event.data.html }, event.data.label ?? 'Editar conteúdo');
+      if (event.data.type === 'change') {const javascript=ensureWidgetRuntime(page.javascript,event.data.html);updatePage({ html: event.data.html, ...(javascript===page.javascript?{}:{javascript}) }, event.data.label ?? 'Editar conteúdo')}
       if (event.data.type === 'template') addTemplate(event.data.name,event.data.html);
       if (event.data.type === 'clipboard') clipboard.current=event.data.html;
       if (event.data.type === 'paste-request'&&clipboard.current) iframe.current?.contentWindow?.postMessage({source:'webdev-editor',type:'paste',html:clipboard.current},'*');
     }
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [addTemplate, setSelected, updatePage]);
+  }, [addTemplate, page.javascript, setSelected, updatePage]);
   useEffect(()=>{const command=(event:Event)=>{const detail=(event as CustomEvent<{type:string}>).detail;iframe.current?.contentWindow?.postMessage({source:'webdev-editor',...detail,...(detail.type==='paste'?{html:clipboard.current}:{})},'*')};window.addEventListener('webdev-canvas-command',command);return()=>window.removeEventListener('webdev-canvas-command',command)},[]);
   useEffect(() => {
     function insert(event: Event) {
@@ -78,11 +79,11 @@ export function Canvas() {
       if(!node)return;
       node.querySelectorAll('*').forEach(element=>element.setAttribute('data-wd-id',crypto.randomUUID()));
       node.setAttribute('data-wd-id',crypto.randomUUID());doc.body.appendChild(node);
-      updatePage({html:doc.body.innerHTML},'Adicionar elemento');
+      const nextHtml=doc.body.innerHTML;updatePage({html:nextHtml,javascript:ensureWidgetRuntime(page.javascript,nextHtml)},'Adicionar elemento');
     }
     window.addEventListener('webdev-insert-widget',insert);
     return()=>window.removeEventListener('webdev-insert-widget',insert);
-  },[page.html,updatePage]);
+  },[page.html,page.javascript,updatePage]);
   const activeAssetPaths = useMemo(() => {
     const base=page.path.includes('/')?page.path.slice(0,page.path.lastIndexOf('/')+1):'';
     const paths=new Set<string>();

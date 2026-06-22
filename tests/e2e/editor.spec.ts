@@ -83,3 +83,10 @@ test('configura animação visual com fallback', async ({ page }) => {
   await expect(canvas.locator('h1')).toHaveAttribute('data-wd-animation', 'fade-up');
   await expect(canvas.locator('h1')).toHaveClass(/wd-animate/);
 });
+
+test('oferece widgets avançados', async ({ page }) => {
+  await page.getByRole('button', { name: 'Novo projeto' }).click();
+  await expect(page.getByRole('button', { name: 'Carrossel' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Popup' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lottie' })).toBeVisible();
+});

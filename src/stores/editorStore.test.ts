@@ -21,4 +21,14 @@ describe('histórico incremental', () => {
     useEditorStore.getState().undo();
     expect(getActivePage(useEditorStore.getState().project).css).not.toBe('a{}');
   });
+
+  it('sincroniza componentes entre páginas', () => {
+    const project=createProject('Globais');
+    const first=project.pages[0]!;
+    first.html='<header data-wd-id="a" data-wd-component="global"><h2 data-wd-id="b">Original</h2></header>';
+    project.pages.push({...first,id:'segunda',name:'Segunda',path:'segunda.html',html:'<header data-wd-id="c" data-wd-component="global"><h2 data-wd-id="d">Antigo</h2></header>'});
+    useEditorStore.getState().setProject(project);
+    useEditorStore.getState().updatePage({html:'<header data-wd-id="a" data-wd-component="global"><h2 data-wd-id="b">Atualizado</h2></header>'},'Editar global');
+    expect(useEditorStore.getState().project.pages[1]!.html).toContain('Atualizado');
+  });
 });

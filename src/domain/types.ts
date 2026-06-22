@@ -37,7 +37,7 @@ export interface Project {
   activePageId: string;
   pages: PageDocument[];
   files: ProjectFile[];
-  templates: { id: string; name: string; html: string; createdAt: number }[];
+  templates: { id: string; name: string; html: string; css?: string; global?: boolean; createdAt: number }[];
   settings: ProjectSettings;
   version: 1;
 }
