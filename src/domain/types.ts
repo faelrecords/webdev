@@ -53,6 +53,7 @@ export interface SelectedElement {
   tagName: string;
   text: string;
   className: string;
+  attributes: Record<string, string>;
   styles: Record<string, string>;
 }
 

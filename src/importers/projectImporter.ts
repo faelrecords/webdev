@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import { unzipSync, strFromU8 } from 'fflate';
 import type { ImportReport, PageDocument, Project, ProjectFile } from '../domain/types';
 import { createProject } from '../domain/defaults';
+import { applySafeResponsiveFixes } from '../utils/responsive';
 
 const textTypes = /(?:html?|css|js|mjs|json|txt|md|svg|xml)$/i;
 
@@ -65,7 +66,7 @@ export async function importFiles(files: FileList | File[]): Promise<{ project: 
   const htmlFiles = expanded.filter((file) => /\.html?$/i.test(file.path));
   const pages: PageDocument[] = htmlFiles.map((file) => {
     const parsed = splitHtml(file.text ?? '', expanded, file.path);
-    return { id: nanoid(), name: file.name.replace(/\.html?$/i, ''), path: file.path, ...parsed };
+    return { id: nanoid(), name: file.name.replace(/\.html?$/i, ''), path: file.path, ...parsed, css: applySafeResponsiveFixes(parsed.css) };
   });
   const project = createProject(input[0]?.name.replace(/\.(html?|zip)$/i, '') || 'Projeto importado');
   if (pages.length) {

@@ -12,7 +12,7 @@ const bridge = String.raw`<script>
     const el = e.target.closest('[data-wd-id]'); if (!el) return;
     el.classList.add('wd-selected');
     const styles = getComputedStyle(el);
-    send('select',{element:{id:el.dataset.wdId,tagName:el.tagName.toLowerCase(),text:el.childElementCount ? '' : el.textContent || '',className:el.className.replace('wd-selected','').trim(),styles:{display:styles.display,width:styles.width,height:styles.height,margin:styles.margin,padding:styles.padding,color:styles.color,backgroundColor:styles.backgroundColor,fontSize:styles.fontSize,fontWeight:styles.fontWeight,textAlign:styles.textAlign,borderRadius:styles.borderRadius}}});
+    send('select',{element:{id:el.dataset.wdId,tagName:el.tagName.toLowerCase(),text:el.childElementCount ? '' : el.textContent || '',className:el.className.replace('wd-selected','').trim(),attributes:Object.fromEntries([...el.attributes].map(attr=>[attr.name,attr.value])),styles:{display:styles.display,width:styles.width,height:styles.height,margin:styles.margin,padding:styles.padding,color:styles.color,backgroundColor:styles.backgroundColor,fontSize:styles.fontSize,fontWeight:styles.fontWeight,textAlign:styles.textAlign,borderRadius:styles.borderRadius}}});
   });
   document.addEventListener('dblclick', e => { const el=e.target.closest('[data-wd-id]'); if(el && !['IMG','VIDEO'].includes(el.tagName)){el.contentEditable='true';el.focus()} });
   document.addEventListener('focusout', e => { if(e.target.isContentEditable){e.target.contentEditable='false';send('change',{html:document.body.innerHTML})} },true);
