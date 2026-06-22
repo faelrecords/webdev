@@ -1,0 +1,24 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createProject } from '../domain/defaults';
+import { getActivePage, useEditorStore } from './editorStore';
+
+describe('histórico incremental', () => {
+  beforeEach(() => useEditorStore.getState().setProject(createProject('Teste')));
+
+  it('desfaz e refaz apenas campos alterados', () => {
+    const initial = getActivePage(useEditorStore.getState().project);
+    useEditorStore.getState().updatePage({ javascript: 'console.log(1)' }, 'Editar JavaScript');
+    useEditorStore.getState().undo();
+    expect(getActivePage(useEditorStore.getState().project).javascript).toBe(initial.javascript);
+    useEditorStore.getState().redo();
+    expect(getActivePage(useEditorStore.getState().project).javascript).toBe('console.log(1)');
+  });
+
+  it('agrupa mudanças contínuas', () => {
+    useEditorStore.getState().updatePage({ css: 'a{}' }, 'Editar CSS');
+    useEditorStore.getState().updatePage({ css: 'b{}' }, 'Editar CSS');
+    expect(useEditorStore.getState().past).toHaveLength(1);
+    useEditorStore.getState().undo();
+    expect(getActivePage(useEditorStore.getState().project).css).not.toBe('a{}');
+  });
+});

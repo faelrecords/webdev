@@ -44,8 +44,9 @@ export interface Project {
 
 export interface HistoryEntry {
   label: string;
-  html: string;
-  css: string;
+  pageId: string;
+  before: Partial<Pick<PageDocument, 'html' | 'css' | 'javascript' | 'name'>>;
+  after: Partial<Pick<PageDocument, 'html' | 'css' | 'javascript' | 'name'>>;
   timestamp: number;
 }
 

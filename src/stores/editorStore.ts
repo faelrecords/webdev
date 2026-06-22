@@ -48,19 +48,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setZoom: (zoom) => set({ zoom: Math.min(1.5, Math.max(0.35, zoom)) }),
   setPreview: (preview) => set({ preview, selected: preview ? null : get().selected }),
   updatePage: (change, label, record = true) => set((state) => {
-    const project = structuredClone(state.project);
-    const page = currentPage(project);
-    const past = record ? [...state.past, { label, html: page.html, css: page.css, timestamp: Date.now() }].slice(-80) : state.past;
-    Object.assign(page, change);
-    project.updatedAt = Date.now();
+    const original = currentPage(state.project);
+    const before = Object.fromEntries(Object.keys(change).map((key) => [key, original[key as keyof typeof change]]));
+    const page = { ...original, ...change };
+    const project = { ...state.project, pages: state.project.pages.map((item) => item.id === page.id ? page : item), updatedAt: Date.now() };
+    const previous = state.past.at(-1);
+    const coalesce = record && previous?.label === label && previous.pageId === page.id && Date.now() - previous.timestamp < 500;
+    const past = !record ? state.past : coalesce
+      ? [...state.past.slice(0, -1), { ...previous, after: { ...previous.after, ...change }, timestamp: Date.now() }]
+      : [...state.past, { label, pageId: page.id, before, after: change, timestamp: Date.now() }].slice(-80);
     return { project, past, future: record ? [] : state.future, saved: false };
   }),
   addPage: (name) => set((state) => {
-    const project = structuredClone(state.project);
     const id = crypto.randomUUID();
-    project.pages.push({ id, name, path: `${name.toLowerCase().replace(/\s+/g, '-')}.html`, html: '<main><section><h1>Nova página</h1><p>Comece adicionando elementos.</p></section></main>', css: 'body{font-family:Inter,system-ui,sans-serif;margin:0}section{padding:80px 24px;max-width:1180px;margin:auto}', javascript: '' });
-    project.activePageId = id;
-    project.updatedAt = Date.now();
+    const page = { id, name, path: `${name.toLowerCase().replace(/\s+/g, '-')}.html`, html: '<main><section><h1>Nova página</h1><p>Comece adicionando elementos.</p></section></main>', css: 'body{font-family:Inter,system-ui,sans-serif;margin:0}section{padding:80px 24px;max-width:1180px;margin:auto}', javascript: '' };
+    const project = { ...state.project, pages: [...state.project.pages, page], activePageId: id, updatedAt: Date.now() };
     return { project, selected: null, past: [], future: [], saved: false };
   }),
   addAssets: async (files) => {
@@ -73,37 +75,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   undo: () => set((state) => {
     const entry = state.past.at(-1);
     if (!entry) return state;
-    const project = structuredClone(state.project);
-    const page = currentPage(project);
-    const future = [{ label: entry.label, html: page.html, css: page.css, timestamp: Date.now() }, ...state.future];
-    page.html = entry.html; page.css = entry.css;
+    const project = applyHistory(state.project, entry.pageId, entry.before);
+    const future = [entry, ...state.future];
     return { project, past: state.past.slice(0, -1), future, selected: null, saved: false };
   }),
   redo: () => set((state) => {
     const entry = state.future[0];
     if (!entry) return state;
-    const project = structuredClone(state.project);
-    const page = currentPage(project);
-    const past = [...state.past, { label: entry.label, html: page.html, css: page.css, timestamp: Date.now() }];
-    page.html = entry.html; page.css = entry.css;
+    const project = applyHistory(state.project, entry.pageId, entry.after);
+    const past = [...state.past, entry];
     return { project, past, future: state.future.slice(1), selected: null, saved: false };
   }),
   restoreHistory: (index) => set((state) => {
     const entry = state.past[index];
     if (!entry) return state;
-    const project = structuredClone(state.project);
-    const page = currentPage(project);
-    const future = [{ label: 'Estado atual', html: page.html, css: page.css, timestamp: Date.now() }, ...state.past.slice(index + 1).reverse(), ...state.future];
-    page.html = entry.html; page.css = entry.css;
-    return { project, past: state.past.slice(0, index), future, selected: null, saved: false };
+    let project = state.project;
+    const entries = state.past.slice(index).reverse();
+    entries.forEach((item) => { project = applyHistory(project, item.pageId, item.before); });
+    return { project, past: state.past.slice(0, index), future: [...entries.reverse(), ...state.future], selected: null, saved: false };
   }),
   persist: async () => {
     const project = get().project;
     await saveProject(project);
-    set({ saved: true });
+    if (get().project.updatedAt === project.updatedAt) set({ saved: true });
   },
 }));
 
 export function getActivePage(project: Project) {
   return currentPage(project);
+}
+
+function applyHistory(project: Project, pageId: string, change: HistoryEntry['before']) {
+  return { ...project, pages: project.pages.map((page) => page.id === pageId ? { ...page, ...change } : page), activePageId: pageId, updatedAt: Date.now() };
 }
