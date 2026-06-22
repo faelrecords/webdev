@@ -73,3 +73,13 @@ test('mantém estilo separado por dispositivo', async ({ page }) => {
   await page.getByRole('button', { name: 'desktop' }).click();
   await expect(canvas.locator('h1')).not.toHaveCSS('font-size', '31px');
 });
+
+test('configura animação visual com fallback', async ({ page }) => {
+  await page.getByRole('button', { name: 'Novo projeto' }).click();
+  const canvas = page.frameLocator('.canvas-frame iframe');
+  await canvas.locator('h1').click();
+  await page.getByRole('button', { name: 'Avançado' }).click();
+  await page.getByLabel('Entrada').selectOption('fade-up');
+  await expect(canvas.locator('h1')).toHaveAttribute('data-wd-animation', 'fade-up');
+  await expect(canvas.locator('h1')).toHaveClass(/wd-animate/);
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeResponsiveness, applySafeResponsiveFixes, setResponsiveStyle } from './responsive';
+import { analyzeResponsiveness, applySafeResponsiveFixes, ensureAnimationRuntime, ensureAnimationStyles, setResponsiveStyle } from './responsive';
 
 describe('responsividade', () => {
   it('detecta largura arriscada', () => {
@@ -20,4 +20,11 @@ it('cria e atualiza estilo por breakpoint', () => {
   expect(second).toContain('@media(max-width:767px)');
   expect(second).toContain('font-size:18px');
   expect(second).not.toContain('font-size:20px');
+});
+
+it('instala animações sem duplicar runtime', () => {
+  expect(ensureAnimationStyles('')).toContain('wdFadeUp');
+  const once=ensureAnimationRuntime('');
+  expect(ensureAnimationRuntime(once)).toBe(once);
+  expect(once).toContain('IntersectionObserver');
 });
