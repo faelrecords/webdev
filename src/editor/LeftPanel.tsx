@@ -1,8 +1,9 @@
 import { ChevronDown, Clock3, File, Folder, Image as ImageIcon, Layers3, LayoutGrid, Search, Star, Upload, type LucideIcon } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { widgetGroups, type Widget } from './widgets';
 import { getActivePage, useEditorStore } from '../stores/editorStore';
 import { getLayerTree, type LayerNode } from '../utils/html';
+import type { Project, ProjectFile } from '../domain/types';
 
 const tabs: { id: 'elements'|'layers'|'files'|'templates'|'history'; label: string; icon: LucideIcon }[] = [
   { id: 'elements', label: 'Elementos', icon: LayoutGrid }, { id: 'layers', label: 'Camadas', icon: Layers3 }, { id: 'files', label: 'Arquivos', icon: Folder }, { id: 'templates', label: 'Modelos', icon: Star }, { id: 'history', label: 'Histórico', icon: Clock3 },
@@ -15,19 +16,30 @@ export function LeftPanel() {
   const [visibleFileCount,setVisibleFileCount]=useState(300);
   const project = useEditorStore((state) => state.project);
   const addAssets = useEditorStore((state) => state.addAssets);
+  const renameAsset=useEditorStore(state=>state.renameAsset);
+  const deleteAsset=useEditorStore(state=>state.deleteAsset);
   const assetInput = useRef<HTMLInputElement>(null);
   const page = getActivePage(project);
   const layers = useMemo(() => getLayerTree(page.html), [page.html]);
   const past = useEditorStore((state)=>state.past);
   const restoreHistory = useEditorStore((state)=>state.restoreHistory);
+  const broken=useMemo(()=>findBrokenReferences(project),[project]);
   return <aside className="left-panel"><div className="panel-tabs">{tabs.map(({ id,label,icon:Icon }) => <button key={id} className={tab===id?'active':''} onClick={()=>setTab(id)}><Icon size={18}/><span>{label}</span></button>)}</div>
     <div className="panel-content">{tab === 'elements' ? <><label className="search-field"><Search size={15}/><input placeholder="Buscar elementos" value={query} onChange={e=>setQuery(e.target.value)}/></label><WidgetLibrary query={query}/></> : null}
     {tab === 'layers' ? <div className="layers-panel"><h3>Estrutura da página</h3>{layers.map((node)=><Layer key={node.id} node={node} depth={0}/>)}</div> : null}
-    {tab === 'files' ? <div className="files-panel"><h3>Arquivos <button className="tiny-action" onClick={()=>assetInput.current?.click()}><Upload size={12}/>Adicionar</button></h3><div className="file-row active"><File size={15}/><span>{page.path}</span></div>{project.files.slice(0,visibleFileCount).map(file=><div className="file-row" key={file.path}>{file.type.startsWith('image')?<ImageIcon size={15}/>:<File size={15}/>}<span title={file.path}>{file.path}</span></div>)}{visibleFileCount<project.files.length?<button className="load-more" onClick={()=>setVisibleFileCount((count)=>count+300)}>Carregar mais {Math.min(300,project.files.length-visibleFileCount)}</button>:null}<input ref={assetInput} type="file" hidden multiple accept="image/*,video/*,.svg,.woff,.woff2,.ttf,.css,.js" onChange={event=>event.target.files&&void addAssets(Array.from(event.target.files))}/></div> : null}
+    {tab === 'files' ? <div className="files-panel"><h3>Arquivos <button className="tiny-action" onClick={()=>assetInput.current?.click()}><Upload size={12}/>Adicionar</button></h3>{broken.length?<p className="asset-warning">{broken.length} referências quebradas</p>:null}<div className="file-row active"><File size={15}/><span>{page.path}</span></div>{project.files.slice(0,visibleFileCount).map(file=><AssetRow key={file.path} file={file} rename={()=>{const next=window.prompt('Novo caminho:',file.path);if(next)renameAsset(file.path,next)}} remove={()=>{if(window.confirm(`Excluir ${file.path}?`))deleteAsset(file.path)}}/>)}{visibleFileCount<project.files.length?<button className="load-more" onClick={()=>setVisibleFileCount((count)=>count+300)}>Carregar mais {Math.min(300,project.files.length-visibleFileCount)}</button>:null}<input ref={assetInput} type="file" hidden multiple accept="image/*,video/*,.svg,.woff,.woff2,.ttf,.css,.js" onChange={event=>event.target.files&&void addAssets(Array.from(event.target.files))}/></div> : null}
     {tab === 'templates' ? <Templates/> : null}
     {tab === 'history' ? <div className="history-panel"><h3>Histórico desta página</h3>{past.length?<>{past.map((entry,index)=><button key={`${entry.timestamp}-${index}`} onClick={()=>restoreHistory(index)}><Clock3/><span><strong>{entry.label}</strong><small>{new Date(entry.timestamp).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small></span></button>)}</>:<p>Nenhuma alteração registrada.</p>}</div> : null}</div>
   </aside>;
 }
+
+function AssetRow({file,rename,remove}:{file:ProjectFile;rename:()=>void;remove:()=>void}){
+  const preview=useMemo(()=>{if(!file.type.startsWith('image')&&!/\.(png|jpe?g|gif|webp|svg)$/i.test(file.path))return '';const blob=file.blob??(file.text!==undefined?new Blob([file.text],{type:file.type}):null);return blob?URL.createObjectURL(blob):''},[file]);
+  useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview)},[preview]);
+  return <div className="file-row asset-row">{preview?<img src={preview} alt=""/>:file.type.startsWith('image')?<ImageIcon size={15}/>:<File size={15}/>}<span title={file.path}>{file.path}</span><button title="Renomear" onClick={rename}>✎</button><button title="Excluir" onClick={remove}>×</button></div>
+}
+
+function findBrokenReferences(project:Project){const available=new Set([...project.files.map(file=>file.path),...project.pages.map(page=>page.path)]);const found=new Set<string>();for(const page of project.pages){const source=`${page.html}\n${page.css}`;for(const match of source.matchAll(/(?:src|href)=["']([^"'#]+)["']|url\(["']?([^"')]+)/gi)){const value=match[1]??match[2];if(value&&!/^(?:https?:|data:|blob:|mailto:|tel:|\/)/i.test(value)&&/\.[a-z0-9]{2,5}(?:\?|$)/i.test(value)&&!available.has(value.split('?')[0]!))found.add(value)}}return [...found]}
 
 function WidgetLibrary({ query }: { query: string }) {
   const filtered = widgetGroups.map(group=>({...group,items:group.items.filter(item=>item.name.toLowerCase().includes(query.toLowerCase()))})).filter(group=>group.items.length);

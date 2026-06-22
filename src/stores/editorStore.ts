@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Device, EditorTab, HistoryEntry, InspectorTab, Project, SelectedElement } from '../domain/types';
+import type { Device, EditorTab, HistoryEntry, InspectorTab, PageDocument, Project, SelectedElement } from '../domain/types';
 import { createProject } from '../domain/defaults';
 import { saveProject } from '../storage/database';
 
@@ -21,9 +21,14 @@ interface EditorState {
   setSelected(element: SelectedElement | null): void;
   setZoom(zoom: number): void;
   setPreview(preview: boolean): void;
-  updatePage(change: Partial<{ html: string; css: string; javascript: string; name: string }>, label: string, record?: boolean): void;
+  updatePage(change: Partial<PageDocument>, label: string, record?: boolean): void;
   addPage(name: string): void;
+  duplicatePage(id:string): void;
+  deletePage(id:string): void;
+  movePage(id:string,direction:-1|1): void;
   addAssets(files: File[]): Promise<void>;
+  renameAsset(path:string,nextPath:string): void;
+  deleteAsset(path:string): void;
   updateSettings(change: Partial<Project['settings']>): void;
   addTemplate(name: string, html: string): void;
   selectPage(id: string): void;
@@ -66,10 +71,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const project = { ...state.project, pages: [...state.project.pages, page], activePageId: id, updatedAt: Date.now() };
     return { project, selected: null, past: [], future: [], saved: false };
   }),
+  duplicatePage:(id)=>set(state=>{const source=state.project.pages.find(page=>page.id===id);if(!source)return state;const copy={...structuredClone(source),id:crypto.randomUUID(),name:`${source.name} — cópia`,path:uniquePagePath(state.project.pages,source.path)};return{project:{...state.project,pages:[...state.project.pages,copy],activePageId:copy.id,updatedAt:Date.now()},selected:null,past:[],future:[],saved:false}}),
+  deletePage:(id)=>set(state=>{if(state.project.pages.length===1)return state;const pages=state.project.pages.filter(page=>page.id!==id);return{project:{...state.project,pages,activePageId:state.project.activePageId===id?pages[0]!.id:state.project.activePageId,updatedAt:Date.now()},selected:null,past:[],future:[],saved:false}}),
+  movePage:(id,direction)=>set(state=>{const pages=[...state.project.pages];const index=pages.findIndex(page=>page.id===id);const target=index+direction;if(index<0||target<0||target>=pages.length)return state;[pages[index],pages[target]]=[pages[target]!,pages[index]!];return{project:{...state.project,pages,updatedAt:Date.now()},saved:false}}),
   addAssets: async (files) => {
     const assets = await Promise.all(files.map(async (file) => ({ path: `assets/${file.name}`, name: file.name, type: file.type || 'application/octet-stream', size: file.size, blob: file, modified: true })));
     set((state) => ({ project: { ...state.project, files: [...state.project.files.filter((current) => !assets.some((asset) => asset.path === current.path)), ...assets], updatedAt: Date.now() }, saved: false }));
   },
+  renameAsset:(path,nextPath)=>set(state=>{const normalized=nextPath.replace(/\\/g,'/').replace(/^\/+/, '');if(!normalized||state.project.files.some(file=>file.path===normalized))return state;const files=state.project.files.map(file=>file.path===path?{...file,path:normalized,name:normalized.split('/').pop()??normalized,modified:true}:file);const pages=state.project.pages.map(page=>({...page,html:page.html.split(path).join(normalized),css:page.css.split(path).join(normalized),javascript:page.javascript.split(path).join(normalized)}));return{project:{...state.project,files,pages,updatedAt:Date.now()},saved:false}}),
+  deleteAsset:(path)=>set(state=>({project:{...state.project,files:state.project.files.filter(file=>file.path!==path),updatedAt:Date.now()},saved:false})),
   updateSettings: (change) => set((state) => ({ project: { ...state.project, settings: { ...state.project.settings, ...change }, updatedAt: Date.now() }, saved: false })),
   addTemplate: (name, html) => set((state) => {const doc=new DOMParser().parseFromString(html,'text/html');const root=doc.body.firstElementChild;root?.classList.remove('wd-selected');root?.removeAttribute('draggable');const componentId=root?.getAttribute('data-wd-component');return { project: { ...state.project, templates: [...(state.project.templates ?? []), { id: componentId??crypto.randomUUID(), name, html:root?.outerHTML??html, global:Boolean(componentId), createdAt: Date.now() }], updatedAt: Date.now() }, saved: false }}),
   selectPage: (id) => set((state) => ({ project: { ...state.project, activePageId: id }, selected: null, past: [], future: [] })),
@@ -125,3 +135,5 @@ function synchronizeComponents(project: Project, sourcePageId: string): Project 
   const templates=project.templates.map(template=>{const source=components.find(component=>component.dataset.wdComponent===template.id);return source?{...template,html:source.outerHTML}:template});
   return {...project,pages,templates};
 }
+
+function uniquePagePath(pages:Project['pages'],path:string){const extension=path.match(/\.[^.]+$/)?.[0]??'.html';const base=path.slice(0,-extension.length);let candidate=`${base}-copia${extension}`;let index=2;while(pages.some(page=>page.path===candidate))candidate=`${base}-copia-${index++}${extension}`;return candidate}

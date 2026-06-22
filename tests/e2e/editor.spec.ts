@@ -90,3 +90,13 @@ test('oferece widgets avançados', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Popup' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Lottie' })).toBeVisible();
 });
+
+test('edita dados SEO da página', async ({ page }) => {
+  await page.getByRole('button', { name: 'Novo projeto' }).click();
+  await page.getByRole('button', { name: /Página:/ }).click();
+  await page.getByRole('button', { name: 'Página e SEO' }).click();
+  await page.getByLabel('Título').fill('Título otimizado');
+  await page.getByLabel('Descrição').fill('Descrição para mecanismos de busca.');
+  await page.locator('.page-settings').getByRole('button', { name: 'Salvar', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Página e SEO' })).toHaveCount(0);
+});

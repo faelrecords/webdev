@@ -31,4 +31,12 @@ describe('histórico incremental', () => {
     useEditorStore.getState().updatePage({html:'<header data-wd-id="a" data-wd-component="global"><h2 data-wd-id="b">Atualizado</h2></header>'},'Editar global');
     expect(useEditorStore.getState().project.pages[1]!.html).toContain('Atualizado');
   });
+
+  it('duplica página e renomeia referências de ativo', () => {
+    const project=createProject('Arquivos');project.files=[{path:'assets/a.png',name:'a.png',type:'image/png',size:1,modified:false}];project.pages[0]!.html='<img src="assets/a.png">';useEditorStore.getState().setProject(project);
+    useEditorStore.getState().duplicatePage(project.activePageId);
+    expect(useEditorStore.getState().project.pages).toHaveLength(2);
+    useEditorStore.getState().renameAsset('assets/a.png','images/a.png');
+    expect(useEditorStore.getState().project.pages.every(page=>page.html.includes('images/a.png'))).toBe(true);
+  });
 });

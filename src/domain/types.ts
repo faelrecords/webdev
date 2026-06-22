@@ -20,6 +20,8 @@ export interface PageDocument {
   html: string;
   css: string;
   javascript: string;
+  headCode?: string;
+  seo?: { title?: string; description?: string; keywords?: string; canonical?: string; ogImage?: string; noindex?: boolean };
 }
 
 export interface ProjectSettings {
@@ -27,6 +29,8 @@ export interface ProjectSettings {
   executeScripts: boolean;
   autoResponsive: boolean;
   locale: 'pt-BR';
+  faviconPath?: string;
+  globalHeadCode?: string;
 }
 
 export interface Project {
@@ -45,8 +49,8 @@ export interface Project {
 export interface HistoryEntry {
   label: string;
   pageId: string;
-  before: Partial<Pick<PageDocument, 'html' | 'css' | 'javascript' | 'name'>>;
-  after: Partial<Pick<PageDocument, 'html' | 'css' | 'javascript' | 'name'>>;
+  before: Partial<PageDocument>;
+  after: Partial<PageDocument>;
   timestamp: number;
 }
 
