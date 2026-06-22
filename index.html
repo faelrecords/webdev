@@ -8,6 +8,20 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      (() => {
+        const development = ['localhost', '127.0.0.1', '::1'].includes(location.hostname) && ['5173', '4173'].includes(location.port);
+        if (!development) {
+          const stylesheet = document.createElement('link');
+          stylesheet.rel = 'stylesheet';
+          stylesheet.href = './assets/app.css';
+          document.head.appendChild(stylesheet);
+        }
+        const application = document.createElement('script');
+        application.type = 'module';
+        application.src = development ? '/src/main.tsx' : './assets/app.js';
+        document.body.appendChild(application);
+      })();
+    </script>
   </body>
 </html>
