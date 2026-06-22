@@ -39,3 +39,24 @@ test('alterna canvas para celular', async ({ page }) => {
   await expect(page.locator('.canvas-scale')).toHaveCSS('width', /351|350|390/);
   await expect(page.getByText('390 × 844')).toBeVisible();
 });
+
+test('duplica elemento sem persistir artefatos editoriais', async ({ page }) => {
+  await page.getByRole('button', { name: 'Novo projeto' }).click();
+  const canvas = page.frameLocator('.canvas-frame iframe');
+  await canvas.locator('h1').click();
+  await page.getByRole('button', { name: 'Avançado' }).click();
+  await page.getByRole('button', { name: 'Duplicar elemento' }).click();
+  await expect(canvas.locator('h1')).toHaveCount(2);
+  await expect(canvas.locator('#wd-editor-bridge')).toHaveCount(1);
+  await expect(canvas.locator('.wd-context-menu')).toHaveCount(0);
+});
+
+test('copia e cola elemento no canvas', async ({ page }) => {
+  await page.getByRole('button', { name: 'Novo projeto' }).click();
+  const canvas = page.frameLocator('.canvas-frame iframe');
+  const heading = canvas.locator('h1');
+  await heading.click();
+  await heading.press('Control+c');
+  await heading.press('Control+v');
+  await expect(canvas.locator('h1')).toHaveCount(2);
+});

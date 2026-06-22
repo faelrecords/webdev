@@ -26,6 +26,7 @@ export function EditorPage() {
   const preview = useEditorStore((state) => state.preview);
   const past = useEditorStore((state) => state.past);
   const future = useEditorStore((state) => state.future);
+  const selected = useEditorStore((state) => state.selected);
   const { setDevice, undo, redo, persist, setPreview, selectPage, addPage } = useEditorStore();
   const page = getActivePage(project);
   useAutosave();
@@ -34,10 +35,11 @@ export function EditorPage() {
       if (!(event.ctrlKey || event.metaKey)) return;
       if (event.key.toLowerCase() === 's') { event.preventDefault(); void persist(); }
       if (event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
+      if (selected && ['c','x','v'].includes(event.key.toLowerCase())) { event.preventDefault(); window.dispatchEvent(new CustomEvent('webdev-canvas-command',{detail:{type:event.key.toLowerCase()==='c'?'copy':event.key.toLowerCase()==='x'?'cut':'paste'}})); }
     }
     window.addEventListener('keydown', shortcuts);
     return () => window.removeEventListener('keydown', shortcuts);
-  }, [persist, redo, undo]);
+  }, [persist, redo, selected, undo]);
 
   function newPage() { const name = window.prompt('Nome da página:', 'Nova página'); if (name?.trim()) addPage(name.trim()); }
   async function exportZip() { setProgress({progress:1,message:'Preparando exportação'}); try { await exportProjectZip(project,setProgress); } finally { setProgress(null); } }
