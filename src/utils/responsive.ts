@@ -31,6 +31,26 @@ export function setDeviceVisibility(css: string, id: string, device: 'desktop'|'
   return hidden ? `${cleaned}\n${rule}` : cleaned;
 }
 
+export function setResponsiveStyle(css: string, id: string, property: string, value: string, device: 'desktop'|'tablet'|'mobile', breakpoints: {mobile:number;tablet:number}) {
+  const token = `${encodeURIComponent(id)}:${device}:${property}`;
+  const start = `/* wd-style:${token}:start */`;
+  const end = `/* wd-style:${token}:end */`;
+  const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const cleaned = css.replace(new RegExp(`/\\* wd-style:${escapedToken}:start \\*/[\\s\\S]*?/\\* wd-style:${escapedToken}:end \\*/`, 'g'), '').trimEnd();
+  if (!value.trim()) return cleaned;
+  const escapedId = CSS.escape(id);
+  const query = device === 'mobile'
+    ? `@media(max-width:${breakpoints.mobile}px)`
+    : device === 'tablet'
+      ? `@media(min-width:${breakpoints.mobile + 1}px) and (max-width:${breakpoints.tablet}px)`
+      : `@media(min-width:${breakpoints.tablet + 1}px)`;
+  return `${cleaned}\n${start}\n${query}{[data-wd-id="${escapedId}"]{${toKebabCase(property)}:${value}!important}}\n${end}`;
+}
+
+function toKebabCase(value: string) {
+  return value.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
+}
+
 export function ensureAnimationStyles(css: string) {
   if (css.includes('wdFadeUp')) return css;
   return `${css}\n/* WebDev Studio: animações */\n@keyframes wdFadeUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}@keyframes wdFadeIn{from{opacity:0}to{opacity:1}}@keyframes wdZoomIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){[data-wd-id]{animation:none!important;transition:none!important}}`;

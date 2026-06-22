@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeResponsiveness, applySafeResponsiveFixes } from './responsive';
+import { analyzeResponsiveness, applySafeResponsiveFixes, setResponsiveStyle } from './responsive';
 
 describe('responsividade', () => {
   it('detecta largura arriscada', () => {
@@ -12,4 +12,12 @@ describe('responsividade', () => {
     expect(once).toBe(twice);
     expect(once).toContain('width:100%');
   });
+});
+
+it('cria e atualiza estilo por breakpoint', () => {
+  const first=setResponsiveStyle('', 'abc', 'fontSize', '20px', 'mobile', {mobile:767,tablet:1024});
+  const second=setResponsiveStyle(first, 'abc', 'fontSize', '18px', 'mobile', {mobile:767,tablet:1024});
+  expect(second).toContain('@media(max-width:767px)');
+  expect(second).toContain('font-size:18px');
+  expect(second).not.toContain('font-size:20px');
 });

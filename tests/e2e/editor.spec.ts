@@ -60,3 +60,16 @@ test('copia e cola elemento no canvas', async ({ page }) => {
   await heading.press('Control+v');
   await expect(canvas.locator('h1')).toHaveCount(2);
 });
+
+test('mantém estilo separado por dispositivo', async ({ page }) => {
+  await page.getByRole('button', { name: 'Novo projeto' }).click();
+  const canvas = page.frameLocator('.canvas-frame iframe');
+  await canvas.locator('h1').click();
+  await page.getByRole('button', { name: 'mobile' }).click();
+  const size = page.getByRole('textbox', { name: 'Tamanho' });
+  await size.fill('31px');
+  await size.press('Tab');
+  await expect(canvas.locator('h1')).toHaveCSS('font-size', '31px');
+  await page.getByRole('button', { name: 'desktop' }).click();
+  await expect(canvas.locator('h1')).not.toHaveCSS('font-size', '31px');
+});
