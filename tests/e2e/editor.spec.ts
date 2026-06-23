@@ -29,7 +29,6 @@ test('seleciona elemento e altera estilo', async ({ page }) => {
   const size = page.getByRole('textbox', { name: 'Tamanho' });
   await expect(size).toBeVisible();
   await size.fill('64px');
-  await size.press('Tab');
   await expect(canvas.locator('h1')).toHaveCSS('font-size', '64px');
 });
 

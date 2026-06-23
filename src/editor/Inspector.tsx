@@ -1,5 +1,5 @@
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, ChevronsUpDown, Copy, EyeOff, Link2, Lock, Maximize2, Paintbrush, SlidersHorizontal, Trash2, Type } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { analyzeResponsiveness, applySafeResponsiveFixes, ensureAnimationRuntime, ensureAnimationStyles, setDeviceVisibility, setResponsiveStyle } from '../utils/responsive';
 import { getActivePage } from '../stores/editorStore';
@@ -15,9 +15,24 @@ export function Inspector() {
   const page=getActivePage(project);
   const issues=analyzeResponsiveness(page.html,page.css);
   const audit=auditPage(page);
+  const styleTimers = useRef(new Map<string, number>());
   function send(type:string,payload:Record<string,string>={}) {
-    if(type==='style'&&selected&&payload.property){updatePage({css:setResponsiveStyle(page.css,selected.id,payload.property,payload.value??'',device,project.settings.breakpoints)},`Estilo ${device}`);return}
-    const frame=document.querySelector<HTMLIFrameElement>('.canvas-frame iframe');frame?.contentWindow?.postMessage({source:'webdev-editor',type,id:selected?.id,...payload},'*')
+    const frame=document.querySelector<HTMLIFrameElement>('.canvas-frame iframe');
+    if(type==='style'&&selected&&payload.property){
+      const key=`${selected.id}:${device}:${payload.property}`;
+      const previous=styleTimers.current.get(key);
+      if(previous) window.clearTimeout(previous);
+      frame?.contentWindow?.postMessage({source:'webdev-editor',type:'live-style',id:selected.id,...payload},'*');
+      const timer=window.setTimeout(()=>{
+        const state=useEditorStore.getState();
+        const currentPage=getActivePage(state.project);
+        updatePage({css:setResponsiveStyle(currentPage.css,selected.id,payload.property!,payload.value??'',device,state.project.settings.breakpoints)},`Estilo ${device}`);
+        styleTimers.current.delete(key);
+      },120);
+      styleTimers.current.set(key,timer);
+      return
+    }
+    frame?.contentWindow?.postMessage({source:'webdev-editor',type,id:selected?.id,...payload},'*')
   }
   return <aside className="inspector"><div className="inspector-tabs"><button className={tab==='content'?'active':''} onClick={()=>setTab('content')}>Conteúdo</button><button className={tab==='style'?'active':''} onClick={()=>setTab('style')}>Estilo</button><button className={tab==='advanced'?'active':''} onClick={()=>setTab('advanced')}>Avançado</button></div>
     {!selected ? <div className="no-selection"><SlidersHorizontal/><h3>Nenhum elemento selecionado</h3><p>Clique elemento no canvas.</p>{issues.length?<div className="responsive-audit"><strong>{issues.length} ajustes responsivos</strong>{issues.slice(0,3).map(issue=><span key={issue.type+issue.message}>{issue.message}</span>)}<button onClick={()=>updatePage({css:applySafeResponsiveFixes(page.css)},'Corrigir responsividade')}>Aplicar correções seguras</button></div>:null}{audit.length?<div className="responsive-audit quality-audit"><strong>{audit.length} alertas de qualidade</strong>{audit.slice(0,5).map((issue,index)=><span key={`${issue.type}-${index}`}>{issue.message}</span>)}</div>:<div className="responsive-audit quality-audit"><strong>Auditoria aprovada</strong><span>SEO e acessibilidade básicos válidos.</span></div>}</div> : <div className="inspector-content"><div className="selected-heading"><span>&lt;{selected.tagName}&gt; · {device==='desktop'?'Desktop':device==='tablet'?'Tablet':'Celular'}</span><strong>{selected.className||selected.tagName}</strong></div>
@@ -27,7 +42,7 @@ export function Inspector() {
 
 type Send=(type:string,payload?:Record<string,string>)=>void;
 function ContentControls({selected,send,assets}:{selected:NonNullable<ReturnType<typeof useEditorStore.getState>['selected']>;send:Send;assets:{path:string;name:string}[]}) {
-  return <><ControlSection title="Conteúdo" icon={<Type/>}>{selected.text!==''?<label className="field vertical"><span>Texto</span><textarea defaultValue={selected.text} onBlur={e=>send('content',{property:'text',value:e.target.value})}/></label>:null}{selected.tagName==='img'?<><label className="field vertical"><span>Imagem</span><select defaultValue={selected.attributes.src??''} onChange={e=>send('content',{property:'src',value:e.target.value})}><option value={selected.attributes.src??''}>Imagem atual</option>{assets.map(asset=><option key={asset.path} value={asset.path}>{asset.name}</option>)}</select></label><label className="field vertical"><span>Texto alternativo</span><input defaultValue={selected.attributes.alt??''} onBlur={e=>send('content',{property:'alt',value:e.target.value})}/></label></>:null}<label className="field vertical"><span>Classes CSS</span><input defaultValue={selected.className} onBlur={e=>send('content',{property:'className',value:e.target.value})}/></label>{selected.tagName==='a'?<label className="field vertical"><span>Link</span><input defaultValue={selected.attributes.href??''} placeholder="https://" onBlur={e=>send('content',{property:'href',value:e.target.value})}/></label>:null}</ControlSection></>;
+  return <><ControlSection title="Conteúdo" icon={<Type/>}>{selected.text!==''?<LiveTextarea label="Texto" value={selected.text} onChange={value=>send('content',{property:'text',value})}/>:null}{selected.tagName==='img'?<><label className="field vertical"><span>Imagem</span><select defaultValue={selected.attributes.src??''} onChange={e=>send('content',{property:'src',value:e.target.value})}><option value={selected.attributes.src??''}>Imagem atual</option>{assets.map(asset=><option key={asset.path} value={asset.path}>{asset.name}</option>)}</select></label><LiveInput label="Texto alternativo" value={selected.attributes.alt??''} onChange={value=>send('content',{property:'alt',value})}/></>:null}<LiveInput label="Classes CSS" value={selected.className} onChange={value=>send('content',{property:'className',value})}/>{selected.tagName==='a'?<LiveInput label="Link" value={selected.attributes.href??''} placeholder="https://" onChange={value=>send('content',{property:'href',value})}/>:null}</ControlSection></>;
 }
 function StyleControls({selected,send}:{selected:NonNullable<ReturnType<typeof useEditorStore.getState>['selected']>;send:Send}) {
   const s=selected.styles;
@@ -44,7 +59,7 @@ function AdvancedControls({selected,send,pageHtml,pageCss,pageJavascript,updateC
   function motion(property:string,value:string){const doc=new DOMParser().parseFromString(pageHtml,'text/html');const element=doc.querySelector(`[data-wd-id="${CSS.escape(selected.id)}"]`);if(!element)return;if(value)element.setAttribute(property,value);else element.removeAttribute(property);updateMotion(doc.body.innerHTML,value?ensureAnimationStyles(pageCss):pageCss,value?ensureAnimationRuntime(pageJavascript):pageJavascript)}
   function visibility(device:'desktop'|'tablet'|'mobile',hidden:boolean){updateCss(setDeviceVisibility(pageCss,selected.id,device,hidden,breakpoints))}
   return <>
-    <ControlSection title="Identidade" icon={<Link2/>}><label className="field vertical"><span>ID editorial</span><input value={selected.id} readOnly/></label><label className="field vertical"><span>Classe CSS</span><input defaultValue={selected.className} onBlur={e=>send('content',{property:'className',value:e.target.value})}/></label></ControlSection>
+    <ControlSection title="Identidade" icon={<Link2/>}><label className="field vertical"><span>ID editorial</span><input value={selected.id} readOnly/></label><LiveInput label="Classe CSS" value={selected.className} onChange={value=>send('content',{property:'className',value})}/></ControlSection>
     <ControlSection title="Animação" icon={<ChevronsUpDown/>}><SelectField label="Entrada" value={selected.attributes['data-wd-animation']||''} options={['','fade-up','fade-down','fade-left','fade-right','fade-in','zoom-in','rotate-in','flip-in','bounce','blur-in']} onChange={v=>motion('data-wd-animation',v)}/><div className="two-fields"><Field label="Duração" value="0.7s" onChange={v=>send('style',{property:'--wd-duration',value:v})}/><Field label="Atraso" value="0s" onChange={v=>send('style',{property:'--wd-delay',value:v})}/></div><SelectField label="Curva" value="ease" options={['ease','linear','ease-in','ease-out','ease-in-out','cubic-bezier(.2,.8,.2,1)']} onChange={v=>send('style',{property:'--wd-easing',value:v})}/><SelectField label="Repetir ao rolar" value={selected.attributes['data-wd-repeat']||'false'} options={['false','true']} onChange={v=>motion('data-wd-repeat',v)}/><SelectField label="Ao passar mouse" value={selected.attributes['data-wd-hover']||''} options={['','grow','lift']} onChange={v=>motion('data-wd-hover',v)}/><SelectField label="Loop" value={selected.attributes['data-wd-loop']||''} options={['','pulse','float']} onChange={v=>motion('data-wd-loop',v)}/></ControlSection>
     <ControlSection title="Efeitos de movimento" icon={<ChevronsUpDown/>}><Field label="Parallax" value={selected.attributes['data-wd-parallax']||'0'} onChange={v=>motion('data-wd-parallax',v)}/><SelectField label="Seguir mouse" value={selected.attributes['data-wd-mouse']||'false'} options={['false','true']} onChange={v=>motion('data-wd-mouse',v)}/><Field label="Escalonar filhos" value={selected.attributes['data-wd-stagger']||'0'} onChange={v=>motion('data-wd-stagger',v)}/><button className="tiny-action fluid-action" onClick={()=>send('style',{property:'position',value:'sticky'})}>Ativar posição fixa</button></ControlSection>
     <ControlSection title="Transformação" icon={<Maximize2/>}><div className="two-fields"><Field label="Mover X" value="0px" onChange={v=>send('style',{property:'translate',value:`${v} 0`})}/><Field label="Mover Y" value="0px" onChange={v=>send('style',{property:'translate',value:`0 ${v}`})}/><Field label="Girar" value="0deg" onChange={v=>send('style',{property:'rotate',value:v})}/><Field label="Escala" value="1" onChange={v=>send('style',{property:'scale',value:v})}/></div></ControlSection>
@@ -55,6 +70,9 @@ function AdvancedControls({selected,send,pageHtml,pageCss,pageJavascript,updateC
   </>;
 }
 function ControlSection({title,icon,children}:{title:string;icon:React.ReactNode;children:React.ReactNode}){return <section className="control-section"><h3>{icon}{title}</h3><div>{children}</div></section>}
-function Field({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}){return <label className="field"><span>{label}</span><input defaultValue={value} onBlur={e=>onChange(e.target.value)}/></label>}
+function Field({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}){return <label className="field"><span>{label}</span><LiveControl value={value} onChange={onChange}/></label>}
 function SelectField({label,value,options,onChange}:{label:string;value:string;options:string[];onChange:(value:string)=>void}){return <label className="field vertical"><span>{label}</span><select value={value} onChange={event=>onChange(event.target.value)}>{options.map(option=><option key={option} value={option}>{option||'Nenhuma'}</option>)}</select></label>}
 function toHex(color:string){const nums=color?.match(/\d+/g);if(!nums||nums.length<3)return '#ffffff';return '#'+nums.slice(0,3).map(value=>Number(value).toString(16).padStart(2,'0')).join('')}
+function LiveInput({label,value,placeholder,onChange}:{label:string;value:string;placeholder?:string;onChange:(value:string)=>void}){return <label className="field vertical"><span>{label}</span><LiveControl value={value} {...(placeholder?{placeholder}:{})} onChange={onChange}/></label>}
+function LiveTextarea({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}){const [draft,setDraft]=useState(value);useEffect(()=>setDraft(value),[value]);return <label className="field vertical"><span>{label}</span><textarea value={draft} onChange={event=>{setDraft(event.target.value);onChange(event.target.value)}}/></label>}
+function LiveControl({value,placeholder,onChange}:{value:string;placeholder?:string;onChange:(value:string)=>void}){const [draft,setDraft]=useState(value);useEffect(()=>setDraft(value),[value]);return <input value={draft} {...(placeholder?{placeholder}:{})} onChange={event=>{setDraft(event.target.value);onChange(event.target.value)}}/>}
